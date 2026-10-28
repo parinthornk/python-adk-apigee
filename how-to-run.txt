@@ -3,3 +3,12 @@ python -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 python run_streaming.py
+
+# --- React frontend instead of the console ---
+# terminal 1: agent backend (REST + SSE)
+adk api_server --allow_origins http://localhost:5173 --auto_create_session
+
+# terminal 2: React UI at http://localhost:5173
+cd frontend
+npm.cmd install
+npm.cmd run dev
