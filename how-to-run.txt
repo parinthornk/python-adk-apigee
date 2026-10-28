@@ -2,13 +2,21 @@ python -m venv .venv
 .\.venv\Scripts\Activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+
+# one-time: create the local config, then put the real key in .env
+Copy-Item my_agent\.env.example my_agent\.env
+# edit my_agent\.env -> PTP_LLM_API_KEY="<your gateway key>"
+
+# Console chat (no browser)
 python run_streaming.py
 
-# --- React frontend instead of the console ---
-# terminal 1: agent backend (REST + SSE)
-adk api_server --allow_origins http://localhost:5173 --auto_create_session
-
-# terminal 2: React UI at http://localhost:5173
+# --- Web UI: one process, one port ---
 cd frontend
 npm.cmd install
-npm.cmd run dev
+npm.cmd run build
+cd ..
+.\.venv\Scripts\python.exe serve.py       # http://127.0.0.1:8000
+
+# --- Web UI development with hot reload ---
+# terminal 1: .\.venv\Scripts\python.exe serve.py
+# terminal 2: cd frontend; npm.cmd run dev   (http://localhost:5173)

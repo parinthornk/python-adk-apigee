@@ -71,7 +71,7 @@ export default function Composer({ value, busy, onChange, onSubmit, onStop }: Co
       <div className="hint">
         <span>Enter to send · Shift+Enter for a new line</span>
         <span className="hint-config">
-          {ADK_APP_NAME} · {ADK_BASE_URL.replace(/^https?:\/\//, "")}
+          {ADK_APP_NAME} · {ADK_BASE_URL.replace(/^https?:\/\//, "") || "same origin"}
         </span>
       </div>
     </div>

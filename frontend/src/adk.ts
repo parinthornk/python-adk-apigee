@@ -9,8 +9,12 @@
  * Docs: https://adk.dev/runtime/api-server/
  */
 
+// The dev server talks to a separate `adk api_server`; a production build is
+// served by serve.py on the same origin, so relative URLs avoid CORS entirely.
+const DEFAULT_BASE_URL = import.meta.env.DEV ? "http://localhost:8000" : "";
+
 export const ADK_BASE_URL = (
-  import.meta.env.VITE_ADK_BASE_URL || "http://localhost:8000"
+  import.meta.env.VITE_ADK_BASE_URL ?? DEFAULT_BASE_URL
 ).replace(/\/+$/, "");
 
 export const ADK_APP_NAME = import.meta.env.VITE_ADK_APP_NAME || "my_agent";
@@ -52,8 +56,19 @@ export interface StreamRequest {
 }
 
 function networkHint(): string {
+  const target = ADK_BASE_URL || window.location.origin;
+
+  if (!ADK_BASE_URL) {
+    return [
+      `Cannot reach the agent API at ${target}.`,
+      "",
+      "This page is served by serve.py; restart it from the project root:",
+      "  .\\.venv\\Scripts\\python.exe serve.py",
+    ].join("\n");
+  }
+
   return [
-    `Cannot reach the ADK API server at ${ADK_BASE_URL}.`,
+    `Cannot reach the ADK API server at ${target}.`,
     "",
     "Start it from the project root, in a second terminal:",
     `  adk api_server --allow_origins ${window.location.origin} --auto_create_session`,

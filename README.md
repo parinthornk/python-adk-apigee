@@ -41,6 +41,7 @@ poc-adk/
 │   ├── .env.example    # UI config template
 │   └── package.json
 ├── .venv/              # virtual environment (gitignored)
+├── serve.py            # single-process host: ADK API + built React UI
 ├── run_streaming.py    # interactive / one-shot SSE streaming chat
 ├── requirements.txt
 ├── .gitignore
@@ -57,7 +58,8 @@ python -m venv .venv
 Copy-Item my_agent\.env.example my_agent\.env
 ```
 
-Then fill in `my_agent/.env`:
+Then put the real key in `my_agent/.env` (never in the tracked
+`.env.example`):
 
 ```dotenv
 PTP_LLM_BASE_URL="https://endpoint-dev.api.pttep.com/shana/poc-ai-gateway/v1"
@@ -128,7 +130,7 @@ All commands assume the venv is active; otherwise prefix with
 | --- | --- |
 | Interactive streaming chat (recommended) | `python run_streaming.py` |
 | One-shot streaming question | `python run_streaming.py "What time is it in Tokyo?"` |
-| React chat UI (see [Web frontend](#web-frontend-react)) | `cd frontend; npm.cmd run dev` → http://localhost:5173 |
+| Web UI + API in one process (see [Web frontend](#web-frontend-react)) | `python serve.py` → http://127.0.0.1:8000 |
 | ADK terminal chat (non-streaming) | `adk run my_agent` |
 | ADK browser UI (streaming) | `adk web --port 8000` → http://localhost:8000 |
 
@@ -145,39 +147,73 @@ A failed turn (WAF/network/quota) prints an error and keeps the session alive.
 
 ## Web frontend (React)
 
-`frontend/` is a React + Vite chat UI that replaces the Python console. ADK
-exposes a plain REST + SSE API, so the frontend framework does not matter —
-React and Angular are both fine; this one uses React.
+`frontend/` is a React + Vite chat UI. ADK exposes a plain REST + SSE API, so
+the frontend framework does not matter — React and Angular both work; this one
+uses React.
+
+### Single process (recommended)
+
+`serve.py` runs the ADK agent API *and* serves the built UI on one port. The
+browser only talks to that origin, so there is no CORS setup and the gateway
+key never leaves the Python process.
 
 ```powershell
-# terminal 1 — agent backend
-adk api_server --allow_origins http://localhost:5173 --auto_create_session
-
-# terminal 2 — UI
 cd frontend
 npm.cmd install
-npm.cmd run dev          # http://localhost:5173
+npm.cmd run build          # rerun this after changing the UI
+
+cd ..
+.\.venv\Scripts\python.exe serve.py        # http://127.0.0.1:8000
 ```
 
+Useful flags: `--port`, `--host`, and `--allow-origin` (repeatable).
+
 `npm.cmd` avoids the `npm.ps1` execution-policy error on Windows.
+
+Routes on that one port:
+
+| Path | Served by |
+| --- | --- |
+| `/` and any unknown path | React `index.html` (SPA fallback) |
+| `/assets/*` | hashed JS/CSS from the build (long cache) |
+| `/docs` | FastAPI/ADK Swagger UI |
+| `/list-apps`, `/apps/...`, `/run_sse` | ADK API server |
+
+`serve.py` checks for `my_agent/.env` and `frontend/dist/index.html` up front,
+and exits with the exact command to fix either.
+
+### UI development (hot reload)
+
+Run the backend, then the Vite dev server against it (its origins are allowed
+by default):
+
+```powershell
+.\.venv\Scripts\python.exe serve.py        # terminal 1, :8000
+```
+
+```powershell
+cd frontend
+npm.cmd run dev                            # terminal 2, :5173
+```
+
+Dev builds point `VITE_ADK_BASE_URL` at `http://localhost:8000`; production
+builds use same-origin relative URLs. If 5173 is busy Vite uses 5174 — add it
+with `serve.py --allow-origin http://localhost:5174`.
 
 What the UI does:
 
 - Streams tokens from `POST /run_sse` (`streaming: true`) and renders the
   `get_current_time` tool call with its JSON result.
 - Keeps one ADK session per conversation; **New chat** starts a fresh one.
-- Shows a red banner with the exact `adk api_server` command when the backend
-  is unreachable, and a Connected/Offline pill backed by `GET /list-apps`.
+- Shows a red banner with the command to run when the backend is unreachable,
+  and a Connected/Offline pill backed by `GET /list-apps`.
 
 Notes:
 
-- `--allow_origins` must match the page origin exactly, otherwise the browser
-  blocks every request (CORS). If port 5173 is busy Vite uses 5174 — pass that
-  origin instead.
 - Configuration lives in `frontend/.env` (`VITE_ADK_BASE_URL`,
-  `VITE_ADK_APP_NAME`); see `frontend/.env.example`.
-- `adk api_server` is unauthenticated. Put it behind your gateway/SSO before
-  exposing it beyond localhost.
+  `VITE_ADK_APP_NAME`); see `frontend/.env.example`. Both are optional.
+- Neither `serve.py` nor `adk api_server` authenticates callers. Put the app
+  behind your gateway/SSO before exposing it beyond localhost.
 - The built-in `adk web` (Angular) remains the best tool for inspecting agent
   events; use `frontend/` when you want a product UI you control.
 
@@ -226,16 +262,29 @@ parameter; the gateway must forward the query string.
 
 ## Security notes
 
-- `my_agent/.env` is gitignored. Never commit real keys.
-- `my_agent/.env.example` intentionally contains only placeholders.
-- Rotate the gateway key if it has been shared outside the team or pasted into
-  logs/tickets.
+- `my_agent/.env` holds the real key and is gitignored. Every gateway call
+  happens inside the Python process (`serve.py`, `adk api_server`, or
+  `run_streaming.py`); the browser only talks to that process.
+- `my_agent/.env.example` is committed and contains placeholders only. Keep it
+  that way — a key committed once stays in git history even after deletion.
+  Check with `git log -p -- my_agent/.env.example`.
+- If a real key ever lands in a tracked file, a chat, a ticket, or a log,
+  rotate it at the gateway and replace the value with a placeholder.
+- `serve.py` and `adk api_server` expose an unauthenticated API. Bind to
+  `127.0.0.1` locally; put real deployments behind the corporate gateway/SSO.
+- The browser cannot call the PTTEP gateway directly: the gateway returns no
+  CORS headers (the `OPTIONS` preflight gets a `401`), and doing so would
+  expose the shared `x-apikey` to anyone loading the page.
 
 ## Verified
 
-- Live gateway calls and the interactive streaming CLI were confirmed working.
-- Offline tests also verified the exact request URLs, the `x-apikey` header, a
-  full `get_current_time` tool round-trip, and multi-turn session history.
+- Live gateway calls verified through `run_streaming.py` and through
+  `serve.py` (agent API + React UI on one port), including a
+  `get_current_time` tool round-trip and streamed answer.
+- The React UI was also exercised against a mock ADK server: token streaming,
+  tool call/result pairing, no duplicated final text, and session reset.
+- `serve.py` static hosting checked for `/`, hashed assets, `/docs`,
+  `/list-apps`, SPA fallback, and path-traversal attempts.
 - Streaming uses `.../gemini-3.1-flash-lite:streamGenerateContent?alt=sse`.
 
 Docs: <https://adk.dev/get-started/python/>

@@ -29,13 +29,21 @@ export function assistantMessage(): ChatMessage {
   return { id: crypto.randomUUID(), role: "assistant", text: "", tools: [], pending: true };
 }
 
+/** Adds remediation for the errors the gateway is most likely to return. */
+function withHint(raw: string): string {
+  if (/401|InvalidApiKey|FailedToResolveAPIKey/i.test(raw)) {
+    return `${raw}\n\nCheck PTP_LLM_API_KEY in my_agent/.env.`;
+  }
+  return raw;
+}
+
 /** Folds one ADK event into the assistant message it belongs to. */
 export function applyEvent(message: ChatMessage, event: AdkEvent): ChatMessage {
   if (event.errorMessage || event.errorCode) {
     return {
       ...message,
       pending: false,
-      error: event.errorMessage || event.errorCode,
+      error: withHint(event.errorMessage || event.errorCode || ""),
     };
   }
 

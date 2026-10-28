@@ -14,10 +14,12 @@ build/
 dist/
 *.egg-info/
 .eggs/
+*.tsbuildinfo
 
 # Node / frontend build artifacts
 node_modules/
 frontend/dist/
+.vite/
 
 # ADK runtime data (sessions, artifacts, local state)
 .adk/
@@ -26,9 +28,16 @@ frontend/dist/
 *.log
 
 # Secrets and local configuration
+# .env.example is the committed template and must hold placeholders only.
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+credentials*.json
 
 # Test / lint caches
 .pytest_cache/
